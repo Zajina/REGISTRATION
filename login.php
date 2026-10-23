@@ -1,54 +1,78 @@
-<?php
-session_start();
-include 'db.php';
-?>
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Login</title>
-    <style>
-        body { font-family: Arial; margin: 50px; }
-        form { width: 300px; }
-        input { width: 100%; padding: 8px; margin: 5px 0; }
-        input[type=submit] { width: 105%; cursor: pointer; }
-        a { text-decoration: none; }
-    </style>
-</head>
-<body>
-
-<h2>Login</h2>
 
 <?php
-if (isset($_POST['login'])) {
-    $email = $_POST['email'];
-    $password = $_POST['password'];
+require_once 'db.php';
 
-    $result = $conn->query("SELECT * FROM logs WHERE email='$email'");
+if (!empty($_SESSION['user_id'])) {
+    header('Location: dashboard.php');
+    exit;
+}
 
-    if ($result->num_rows > 0) {
-        $row = $result->fetch_assoc();
+$error = '';
 
-        if (password_verify($password, $row['password'])) {
-            $_SESSION['user'] = $row['name'];
-            header("Location: index.php");
-            exit();
-        } else {
-            echo "<p style='color:red;'>Incorrect password!</p>";
-        }
-    } else {
-        echo "<p style='color:red;'>Email not found!</p>";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+
+    $identity = trim($_POST['identity'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    $stmt = $pdo->prepare(
+        'SELECT id, full_name, password FROM users
+         WHERE username = ? OR email = ? LIMIT 1'
+    );
+    $stmt->execute([$identity, $identity]);
+    $user = $stmt->fetch();
+
+    if ($user && password_verify($password, $user['password'])) {
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int)$user['id'];
+        $_SESSION['user_name'] = $user['full_name'];
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+        header('Location: dashboard.php');
+        exit;
     }
+
+    $error = 'Incorrect username/email or password.';
 }
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login | Armwrestling</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+    <div class="brand">ARM<span>FORCE</span></div>
+    <p class="eyebrow">YOUR TRAINING STARTS HERE</p>
+    <h1>Welcome back</h1>
+    <p class="muted">Sign in to access your training dashboard.</p>
 
-<form method="POST" action="">
-    <input type="email" name="email" placeholder="Email" required>
-    <input type="password" name="password" placeholder="Password" required>
-    <input type="submit" name="login" value="Login">
-</form>
+    <?php if (isset($_GET['registered'])): ?>
+        <div class="success">Account created. You can now log in.</div>
+    <?php endif; ?>
 
-<p>Don’t have an account? <a href="register.php">Register here</a></p>
+    <?php if ($error): ?>
+        <div class="alert"><?= e($error) ?></div>
+    <?php endif; ?>
 
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+
+        <label>Username or email</label>
+        <input name="identity" required autocomplete="username">
+
+        <label>Password</label>
+        <input type="password" name="password" required
+               autocomplete="current-password">
+
+        <button class="btn btn-primary full" type="submit">Log In</button>
+    </form>
+
+    <p class="auth-footer">New here? <a href="register.php">Create an account</a></p>
+</main>
 </body>
 </html>
+        
